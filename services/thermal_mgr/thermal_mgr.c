@@ -2,6 +2,8 @@
 #include "errors.h"
 #include "lm75bd.h"
 #include "console.h"
+#include "logging.h"
+
 
 #include <FreeRTOS.h>
 #include <os_task.h>
@@ -42,21 +44,73 @@ void initThermalSystemManager(lm75bd_config_t *config) {
 }
 
 error_code_t thermalMgrSendEvent(thermal_mgr_event_t *event) {
-  /* Send an event to the thermal manager queue */
+  //first gather all edge cases where event does not work
+  if (event == NULL) {
+    return ERR_CODE_INVALID_ARG;
+  }
+  //check if the queue is initialized
+  else if (thermalMgrQueueHandle == NULL) {
+    printConsole("Thermal Manager queue not initialized.\n");
+    return ERR_CODE_INVALID_STATE;
+  }
+  //collect the xQueueSend in result object
+  BaseType_t result = xQueueSend(thermalMgrQueueHandle, event, 0);
+  if (result != pdTRUE) {
+    printConsole("Event could not be sent to Thermal Manager queue.\n");
+    return ERR_CODE_QUEUE_FULL;
+  }
 
   return ERR_CODE_SUCCESS;
 }
 
 void osHandlerLM75BD(void) {
-  /* Implement this function */
+  thermal_mgr_event_t event;
+  event.type = THERMAL_MGR_EVENT_OVER_TEMP_RECIEVED;
+  thermalMgrSendEvent(&event);
 }
 
 static void thermalMgr(void *pvParameters) {
-  /* Implement this task */
+  thermal_mgr_event_t receivedEvent;
   while (1) {
-    
-  }
+    BaseType_t received = xQueueReceive(thermalMgrQueueHandle, &receivedEvent, 0);
+    if (received == pdTRUE) {
+      switch (receivedEvent.type) {
+        case THERMAL_MGR_EVENT_MEASURE_TEMP_CMD:
+          float tempRead;
+          error_code_t errCode = readTempLM75BD(LM75BD_OBC_I2C_ADDR, &tempRead);
+          LOG_IF_ERROR_CODE(errCode);
+          if (errCode != ERR_CODE_SUCCESS) {
+            continue;
+          } 
+          else {
+            addTemperatureTelemetry(tempRead);
+          }
+          break;
+
+        case THERMAL_MGR_EVENT_OVER_TEMP_RECIEVED:
+          float readTemp;
+          error_code_t errCode2 = readTempLM75BD(LM75BD_OBC_I2C_ADDR, &readTemp);
+          LOG_IF_ERROR_CODE(errCode2);
+          if (errCode2 != ERR_CODE_SUCCESS) {
+            continue;
+          } 
+          else {
+            if(readTemp>LM75BD_DEFAULT_OT_THRESH){
+              overTemperatureDetected();
+            }
+            else{
+              safeOperatingConditions();
+            }
+          }
+          break;
+
+        default:
+          LOG_ERROR_CODE(ERR_CODE_INVALID_EVENT);
+        }
+      }  
+      }
 }
+
 
 void addTemperatureTelemetry(float tempC) {
   printConsole("Temperature telemetry: %f deg C\n", tempC);
