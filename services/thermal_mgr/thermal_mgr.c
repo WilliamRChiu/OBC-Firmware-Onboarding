@@ -44,19 +44,15 @@ void initThermalSystemManager(lm75bd_config_t *config) {
 }
 
 error_code_t thermalMgrSendEvent(thermal_mgr_event_t *event) {
-  //first gather all edge cases where event does not work
+
   if (event == NULL) {
     return ERR_CODE_INVALID_ARG;
   }
-  //check if the queue is initialized
   else if (thermalMgrQueueHandle == NULL) {
-    printConsole("Thermal Manager queue not initialized.\n");
     return ERR_CODE_INVALID_STATE;
   }
-  //collect the xQueueSend in result object
   BaseType_t result = xQueueSend(thermalMgrQueueHandle, event, 0);
   if (result != pdTRUE) {
-    printConsole("Event could not be sent to Thermal Manager queue.\n");
     return ERR_CODE_QUEUE_FULL;
   }
 
@@ -72,7 +68,7 @@ void osHandlerLM75BD(void) {
 static void thermalMgr(void *pvParameters) {
   thermal_mgr_event_t receivedEvent;
   while (1) {
-    BaseType_t received = xQueueReceive(thermalMgrQueueHandle, &receivedEvent, 0);
+    BaseType_t received = xQueueReceive(thermalMgrQueueHandle, &receivedEvent, portMAX_DELAY);
     if (received == pdTRUE) {
       switch (receivedEvent.type) {
         case THERMAL_MGR_EVENT_MEASURE_TEMP_CMD:

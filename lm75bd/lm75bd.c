@@ -33,34 +33,14 @@ error_code_t readTempLM75BD(uint8_t devAddr, float *temp) {
 
   /*Set the Pointer Register to the Temperature Register */
   uint8_t tempRegAddr = 0x00;
-  errCode = i2cSendTo(devAddr, &tempRegAddr, sizeof(tempRegAddr));
-  if (errCode != ERR_CODE_SUCCESS) {
-    LOG_ERROR("Could not send Temperature. Error Code: %d", errCode);
-    return errCode;
-  }
-
+  RETURN_IF_ERROR_CODE(i2cSendTo(devAddr, &tempRegAddr, sizeof(tempRegAddr)));
   /*Read the Temperature Data from the Sensor */
   uint8_t tempBuffer[2] = {0};
-  errCode = i2cReceiveFrom(devAddr, tempBuffer, sizeof(tempBuffer));
-  if (errCode != ERR_CODE_SUCCESS) {
-    LOG_ERROR("Could not read Temperature. Error Code: %d", errCode);
-    return errCode;
-  }
-
-  /*Convert the Raw Data to Degrees Celsius */
-  // Combine two bytes into a single 16-bit signed integer
-  //shift the bit over by 8 to multiply it by 2 8 times
-  //need to combine the most significant byte with the least significant byte
-  int16_t rawTemp = (int16_t)((tempBuffer[0] << 8) | tempBuffer[1]);
+  RETURN_IF_ERROR_CODE(i2cReceiveFrom(devAddr, tempBuffer, sizeof(tempBuffer)));
   
-  // Perform the conversion using the conversion factor
-  //as temperature can be both positive and negative, represent it using two's complement
-  //since temperature is represented in the upper 11 bits
-  //therefore, need to shift the rawTemp over to the right by 5 bits
-  //each LSB is 0.125 degrees
+  int16_t rawTemp = (int16_t)((tempBuffer[0] << 8) | tempBuffer[1]);
+ 
   *temp = (rawTemp >> 5) * 0.125;
-
-  LOG_INFO("Temperature read from LM75BD: %.3f°C", *temp);
  
   return ERR_CODE_SUCCESS;
 }
